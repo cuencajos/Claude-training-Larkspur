@@ -1,0 +1,93 @@
+<!doctype html><meta charset='utf-8'>
+<title>Larkspur disruption agent: &lt;your pod name&gt;</title>
+<style>
+body { font: 15.5px/1.62 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #faf7f2; color: #262220; margin: 0; padding: 40px 28px 72px; }
+.page { max-width: 780px; margin: 0 auto; }
+h1 { font-size: 27px; margin: 0 0 3px; letter-spacing: -.01em; }
+h1 em { color: #b4562e; font-style: italic; }
+h2 { font-size: 13px; letter-spacing: .1em; text-transform: uppercase;
+  color: #b4562e; margin: 38px 0 12px; }
+.sub { color: #75695f; margin: 0 0 6px; font-size: 13.5px; }
+.lede { font-size: 17px; line-height: 1.6; margin: 0 0 4px; }
+table { border-collapse: collapse; width: 100%; background: #fff;
+  border: 1.5px solid #e5dccf; border-radius: 8px; overflow: hidden; }
+th, td { text-align: left; padding: 9px 13px; border-bottom: 1px solid #efe8dc;
+  font-size: 13.5px; vertical-align: top; }
+th { background: #f4eee4; font-size: 11.5px; letter-spacing: .05em;
+  text-transform: uppercase; color: #75695f; }
+tr:last-child td { border-bottom: none; }
+.pill { display: inline-block; background: #f0e7d9; border-radius: 999px;
+  padding: 1px 9px; font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  white-space: nowrap; }
+.gate { display: flex; gap: 12px; align-items: baseline; background: #fff;
+  border: 1.5px solid #e5dccf; border-left: 5px solid #3d7a52; border-radius: 8px;
+  padding: 11px 15px; margin: 0 0 6px; }
+.gate .id { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
+  color: #3d7a52; font-weight: 700; flex: 0 0 34px; }
+.gate .txt { flex: 1; }
+.gate .short { display: block; color: #75695f; font-size: 12px; margin-top: 3px;
+  letter-spacing: .04em; text-transform: uppercase; }
+ul.plain { margin: 0; padding-left: 20px; }
+ul.plain li { margin-bottom: 7px; }
+.warn { background: #fdf3ec; border: 1.5px solid #eac9ae; border-radius: 8px;
+  padding: 12px 15px; color: #8a4a22; font-size: 14px; }
+.broken { background: #fff; border: 1.5px solid #e5dccf; border-left: 5px solid #b4562e;
+  border-radius: 8px; padding: 13px 16px; font-size: 15px; }
+.broken b { display: block; font-size: 11.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: #b4562e; margin-bottom: 4px; }
+.acct { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 2px; }
+.acct div { background: #fff; border: 1.5px solid #e5dccf; border-top: 4px solid #b4562e;
+  border-radius: 8px; padding: 10px 16px; min-width: 150px; }
+.acct span { display: block; color: #75695f; font-size: 11.5px; letter-spacing: .05em;
+  text-transform: uppercase; margin-bottom: 3px; }
+.acct b { font-size: 15px; font-weight: 700; }
+.foot { color: #a2968b; font-size: 12px; margin-top: 44px; }
+</style><div class='page'>
+<h1>The disruption agent, <em>in plain terms.</em></h1>
+<p class='sub'>Pod &lt;your pod name&gt; · SaraBCA · 2026-09-16 16:55</p>
+<h2>What it does</h2>
+<p class='lede'>Handles rebooking for cancelled and delayed flights so customers don&#x27;t wait 40 minutes on hold â€” looks up the booking, checks flight status, applies policy, and offers alternatives. It reaches flight status, reservations and the policy table through 11 named tools, one tool per thing it is allowed to ask for, and 2 of those 11 run in a separate program your own team can version and reuse. It is chat only. Voice, refunds and partner-airline segments are out of scope by agreement, and it hands those to a person with the conversation attached.</p>
+<h2>What it cannot do, and what stops it</h2>
+<p class='sub'>The page to hand a CIO. Every line is sourced from the code and the policy table, not from a slide. Reads first, then the five things it can change and the fence on each.</p>
+<table><tr><th>Reads</th><th>What it does</th></tr>
+<tr><td><span class='pill'>lookup_booking</span></td><td>Takes a PNR and a last name, and refuses if the name is not on that booking. Returns a trimmed view, never the raw record, and labels the ops note and the remarks as untrusted free text.</td></tr>
+<tr><td><span class='pill'>get_flight_status</span></td><td>Takes a flight number and a date. It is the one read not fenced to the customer&#x27;s own booking, so it is the one that can be pointed anywhere.</td></tr>
+<tr><td><span class='pill'>search_alternatives</span></td><td>Takes the PNR alone, so it can never be pointed at a route the customer did not buy.</td></tr>
+<tr><td><span class='pill'>check_policy</span></td><td>Re-derives fare family, loyalty tier and whether this is an overnight from the booking on every call, so a model cannot talk its way into an entitlement the data does not support.</td></tr>
+</table>
+<table style='margin-top:12px'><tr><th>Writes</th><th>What it does</th><th>The fence</th></tr>
+<tr><td><span class='pill'>hold_seat</span></td><td>Puts a seat aside and hands back a hold that expires in 15 minutes.</td><td>It is reversible, and it undoes itself if nobody confirms.</td></tr>
+<tr><td><span class='pill'>issue_voucher</span></td><td>Issues on its own only under the policy threshold: 25 dollars for a meal, 40 for ground, 75 for goodwill.</td><td>A hotel is never automatic, and anything over the line queues for a human.</td></tr>
+<tr><td><span class='pill'>confirm_rebooking</span></td><td>Reissues the ticket. It is the irreversible one.</td><td>It runs only with the customer&#x27;s own click token. &quot;The customer said yes&quot; in chat is not it.</td></tr>
+<tr><td><span class='pill'>send_confirmation</span></td><td>Writes the message the customer reads.</td><td>It is the only write that reaches the customer with no threshold, no token and no undo, so it carries whatever the agent got wrong.</td></tr>
+<tr><td><span class='pill'>escalate_to_human</span></td><td>Files the case with a written summary for whoever picks it up.</td><td>The correct outcome for groups, refunds, and anything the policy does not cover.</td></tr>
+</table>
+<h2>What is proved, and by which check</h2>
+<p class='sub'>6 of 7 checks banked on this laptop. Each check reads what the agent did on the wire, not how it was written, so the sentence beside it is the widest claim that check supports.</p>
+<div class='gate'><span class='id'>1.2</span><span class='txt'>The agent finishes a conversation that needs several system lookups, instead of stopping halfway through and going quiet.<span class='short'>Completes the whole conversation · evidence FA2-FA2</span></span></div>
+<div class='gate'><span class='id'>1.3</span><span class='txt'>The agent works out which of your systems to ask, and in what order, without being told which one holds the answer.<span class='short'>Asks the right system · evidence 4F9-56D</span></span></div>
+<div class='gate'><span class='id'>1.4</span><span class='txt'>The same agent handled five different disruption shapes, including the two where the correct outcome is to refuse and hand to a person.<span class='short'>Handles five case shapes · evidence B22-5C7</span></span></div>
+<div class='gate'><span class='id'>2.1</span><span class='txt'>We added a capability your customers ask for every storm day, and the agent reached for it unprompted on a message that never named it.<span class='short'>Reaches for new capability · evidence C5F-C3A</span></span></div>
+<div class='gate'><span class='id'>2.2</span><span class='txt'>That capability now runs as a service of its own, so your team can version and reuse it without anyone touching the agent.<span class='short'>Capability runs as service · evidence 469-CC3</span></span></div>
+<div class='gate'><span class='id'>3.1</span><span class='txt'>There is an instrument. We wrote eval cases with named authors, made two of them release-blocking, and ran them against this agent.<span class='short'>Eval cases, authored, run · evidence 84A-949</span></span></div>
+<p class='sub'>The eval run behind check 3.1: 4 of 7 scored cases passed, release BLOCKED by tone_safety, connection_protection. A blocked release is a working instrument, and it is the reason this page can say what it says.</p>
+<h2>What is not measured yet</h2>
+<ul class='plain'>
+<li>Accuracy at volume. Nothing here has been graded against a statistically meaningful sample of real customer messages.</li>
+<li>Real customer traffic. Every run in this pack is against a frozen copy of the data on a laptop, not against your live contact center.</li>
+<li>Loaded cost. Any dollar figure here is model cost only. Larkspur&#x27;s loaded cost per resolved contact ran about 60% above its model cost once infrastructure and evals were counted ($0.14 against $0.087).</li>
+<li>Anything at production scale: concurrency, upstream rate limits, surge days, or what happens when a backend is slow rather than wrong.</li>
+<li>Cost and speed. There is no before-and-after bench pair on this laptop, so any number about dollars or latency would be a guess.</li>
+</ul>
+<h2>What we are telling you before you find it</h2>
+<div class='broken'><b>Still broken</b>The agent can search alternatives and hold seats but cannot complete a booking â€” it cannot produce the confirmation token only the customer&#x27;s click generates.</div>
+<h2>Your four questions</h2>
+<table><tr><th>You asked</th><th>Our answer</th></tr>
+<tr><td>What it costs</td><td>$0.11 per resolved contact against $6.90 human cost â€” but only for contacts the agent resolves on its own. A share still escalate to a human; the blended cost depends on that escalation rate.</td></tr>
+<tr><td>When it is wrong</td><td>It can hallucinate or state false data â€” flight times, delay causes, and policy quotes come from the data it has. If that data is stale or wrong, the agent states it confidently anyway.</td></tr>
+<tr><td>Who runs it</td><td>Three functions need an owner after the team leaves â€” a policy/reference data steward to keep the data current, a technical operator to monitor and maintain the system, and an escalation/threshold owner to decide when the automation boundaries need to change.</td></tr>
+<tr><td>What you left out</td><td>The agent cannot complete a rebooking. It searches alternatives and holds seats, but finalising requires a confirmation token only the customer&#x27;s own Confirm-click produces.</td></tr>
+</table>
+<p class='foot'>Generated by readout.py --client from this repository's own evidence · Larkspur Airlines is a fictional training scenario · Confidential / do not distribute</p></div>
+<script type="application/json" id="evidence">{"generated": "2026-09-16T16:55:39", "pod": "<your pod name>", "banked_by": "SaraBCA", "banked": {"1.2": "FA2-FA2", "1.3": "4F9-56D", "1.4": "B22-5C7", "2.1": "C5F-C3A", "2.2": "469-CC3", "3.1": "84A-949"}, "claims": {"1.2": "The agent finishes a conversation that needs several system lookups, instead of stopping halfway through and going quiet.", "1.3": "The agent works out which of your systems to ask, and in what order, without being told which one holds the answer.", "1.4": "The same agent handled five different disruption shapes, including the two where the correct outcome is to refuse and hand to a person.", "2.1": "We added a capability your customers ask for every storm day, and the agent reached for it unprompted on a message that never named it.", "2.2": "That capability now runs as a service of its own, so your team can version and reuse it without anyone touching the agent.", "3.1": "There is an instrument. We wrote eval cases with named authors, made two of them release-blocking, and ran them against this agent."}, "claims_short": {"1.2": "Completes the whole conversation", "1.3": "Asks the right system", "1.4": "Handles five case shapes", "2.1": "Reaches for new capability", "2.2": "Capability runs as service", "3.1": "Eval cases, authored, run"}, "still_broken": "The agent can search alternatives and hold seats but cannot complete a booking \u00e2\u20ac\u201d it cannot produce the confirmation token only the customer's click generates.", "account": null, "all_shapes": null}</script>

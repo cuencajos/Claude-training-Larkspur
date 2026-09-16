@@ -1,8 +1,8 @@
 # ACCOUNT.md
 
-Account:
-Workflow:
-Date:
+Account: Potato Airlines
+Workflow: Flight rebooking after a cancellation: The customer service team triggers the process when a flight is canceled. The system reads passenger bookings, flight schedules, seat availability, and airline policies, then automatically proposes alternative flights and updates reservations. A human agent only intervenes for special cases such as VIP passengers, complex itineraries, or compensation decisions above a predefined threshold.
+Date: 26 septembre 2026
 
 Three lines, and nobody can write them for you.
 
