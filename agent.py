@@ -11,14 +11,60 @@ Steps and gates:  https://anthropicpartnerbasecamp.bts.com/
 from __future__ import annotations
 from typing import Any, Dict, List
 from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
-                     new_session, record_tool_result,
+                     new_session, next_available_day, record_tool_result,
                      runtime_preamble)
 
 MAX_TOOL_CALLS = 8  # Larkspur's own build capped the loop here; then a human takes over.
 
 TONE_ADDENDUM = ""                       # ✏️ Build 4, step 4.1, intelligence lane
-EXTRA_TOOLS: List[Dict[str, Any]] = []   # ✏️ Build 2, step 2.1: schemas for the tools you add
-LOCAL_TOOLS: Dict[str, Any] = {}         # ✏️ Build 2, step 2.1: the functions behind them
+
+EXTRA_TOOLS: List[Dict[str, Any]] = [
+]   # ✏️ Build 2, step 2.1: schemas for the tools you add
+
+
+def _check_connection(pnr: str, inbound_flight: str, outbound_flight: str, date: str) -> Dict[str, Any]:
+    """Check if a passenger will make their connecting flight."""
+    from support import execute_tool
+    inbound  = execute_tool("get_flight_status", {"flight_no": inbound_flight,  "date": date})
+    outbound = execute_tool("get_flight_status", {"flight_no": outbound_flight, "date": date})
+
+    inbound_arr  = inbound.get("actual_arr_local")  or inbound.get("sched_arr_local",  "")
+    outbound_dep = outbound.get("actual_dep_local") or outbound.get("sched_dep_local", "")
+
+    # Minimum connection times by airport (minutes)
+    MCT = {"DEN": 45, "AUS": 30, "LAX": 60, "ORD": 60, "DFW": 45}
+    layover_airport = inbound.get("dest", "")
+    min_connect = MCT.get(layover_airport, 45)
+
+    available = None
+    at_risk = True
+    if inbound_arr and outbound_dep:
+        try:
+            from datetime import datetime
+            fmt = "%H:%M"
+            diff = datetime.strptime(outbound_dep, fmt) - datetime.strptime(inbound_arr, fmt)
+            available = int(diff.total_seconds() / 60)
+            at_risk = available < min_connect
+        except Exception:
+            pass
+
+    action = "protect connection" if at_risk else "monitor"
+    return {
+        "pnr": pnr,
+        "inbound_flight": inbound_flight,
+        "outbound_flight": outbound_flight,
+        "layover_airport": layover_airport,
+        "available_minutes": available,
+        "minimum_connection_minutes": min_connect,
+        "at_risk": at_risk,
+        "recommended_action": action,
+        "inbound_status": inbound.get("status"),
+        "outbound_status": outbound.get("status"),
+    }
+
+
+LOCAL_TOOLS: Dict[str, Any] = {
+}         # ✏️ Build 2, step 2.1: the functions behind them
 
 
 def text_of(response) -> str:
@@ -70,14 +116,14 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
     while response.stop_reason == "tool_use" and turns < MAX_TOOL_CALLS:
         messages.append({"role": "assistant", "content": response.content})
         messages.append({"role": "user", "content": tool_results(response)})
-        answer = text_of(response)
         response = client.messages.create(
             model=MODEL, max_tokens=4096, system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
             thinking={"type": "adaptive"}, tools=tools, messages=messages,
         )
+        answer = text_of(response)
         turns += 1
 
-    return text_of(response)
+    return answer
 
 
 def tool_list() -> List[Dict[str, Any]]:                   # ✏️ Build 2, step 2.2
@@ -126,7 +172,12 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
         },
         {
             "name": "search_alternatives",
-            "description": "Search for alternative flights when the customer's flight has been cancelled or significantly delayed. Requires the PNR. Returns available rebooking options.",
+            "description": (
+                "Search for alternative Larkspur flights when a customer's flight has been "
+                "cancelled or significantly delayed. Use this after check_policy confirms a "
+                "rebooking waiver applies and the customer wants to be rebooked. Returns a "
+                "list of available alternative flight options for the customer to choose from."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {"pnr": {"type": "string"}},
