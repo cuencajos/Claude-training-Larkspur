@@ -98,17 +98,38 @@ def tool_results(response) -> List[Dict[str, Any]]:
     return results
 
 
-def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏️ Build 1, step 1.2
+def run_agent(pnr: str, last_name: str, message: str) -> str:
     """Run the tool loop until Claude stops asking for tools. Return its final text."""
     client, tracer = new_session()
     tools = tool_list()
+
+    # Cache des tool schemas (une seule fois, réutilisé à chaque tour)
+    tools_clone = tools.copy()
+    if tools_clone:
+        last_tool = tools_clone[-1].copy()
+        last_tool["cache_control"] = {"type": "ephemeral"}
+        tools_clone[-1] = last_tool
+
+    # Cache du system prompt : partie stable cachée, partie dynamique séparée
+    system_blocks = [
+        {
+            "type": "text",
+            "text": SYSTEM_PROMPT + TONE_ADDENDUM,
+            "cache_control": {"type": "ephemeral"}
+        },
+        {
+            "type": "text",
+            "text": runtime_preamble()
+        }
+    ]
+
     messages = [
         {"role": "user", "content": f"PNR {pnr}, last name {last_name}. {message}"},
     ]
 
     response = client.messages.create(
-        model=MODEL, max_tokens=4096, system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
-        thinking={"type": "adaptive"}, tools=tools, messages=messages,
+        model=MODEL, max_tokens=4096, system=system_blocks,
+        thinking={"type": "adaptive"}, tools=tools_clone, messages=messages,
     )
 
     answer = ""
@@ -117,8 +138,8 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
         messages.append({"role": "assistant", "content": response.content})
         messages.append({"role": "user", "content": tool_results(response)})
         response = client.messages.create(
-            model=MODEL, max_tokens=4096, system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
-            thinking={"type": "adaptive"}, tools=tools, messages=messages,
+            model=MODEL, max_tokens=4096, system=system_blocks,
+            thinking={"type": "adaptive"}, tools=tools_clone, messages=messages,
         )
         answer = text_of(response)
         turns += 1
